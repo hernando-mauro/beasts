@@ -1,0 +1,157 @@
+<script src="tinytest.js"></script>
+<script type="text/javascript">
+
+  (function(){
+    var libraryStorage = {};
+
+    function librarySystem(libraryName, listOfDependencyNames, callback) {
+      if (arguments.length > 1) {
+        libraryStorage[libraryName] = {
+          library: callback,
+          listOfDependencyNames: listOfDependencyNames,
+        };
+        
+      } else {
+         
+          if (typeof libraryStorage[libraryName].library !== 'function') return libraryStorage[libraryName].library;
+
+          // libraryStorage[libraryName].library is the callback function
+          var dependencies;
+
+          if (libraryStorage[libraryName].listOfDependencyNames.length === 0) {
+            dependencies = null;
+          } else {
+              dependencies = libraryStorage[libraryName].listOfDependencyNames.map(function(dependencyName) {
+                if (!libraryStorage.hasOwnProperty(dependencyName)) throw new Error('Required dependency missing : ' + dependencyName);
+                return librarySystem(dependencyName);  
+              }); 
+          }
+          
+          return libraryStorage[libraryName].library = libraryStorage[libraryName].library.apply(null, dependencies);
+        }
+    }
+
+    window.librarySystem = librarySystem;
+
+    // ************** DEBUGGING/TESTING CODE - COMMENT OUT IN USE  ****************
+    // deletes all properties in library Storage
+    function clearLibraryStorage() {
+      for (var prop in libraryStorage) {
+        if (libraryStorage.hasOwnProperty(prop)) delete libraryStorage[prop];
+      }
+    }
+    // expose library storage for inspection 
+    window.libraryStorage = libraryStorage;
+    // expose clear library storage function to clear library before each test. 
+    window.clearLibraryStorage = clearLibraryStorage;
+    
+  })();
+
+</script>
+<script>
+tests({
+
+  'it should return the library if dependencies were loaded before the library': function() {
+    clearLibraryStorage();
+
+    librarySystem('name', [], function() {
+      return 'Gordon';
+    });
+
+    librarySystem('company', [], function() {
+      return 'Watch and Code';
+    });
+
+    librarySystem('workBlurb', ['name', 'company'], function(name, company) {
+      return name + ' works at ' + company;
+    });
+
+    var result = librarySystem('workBlurb');
+    eq(result, 'Gordon works at Watch and Code');
+  },
+  
+  'it should return the library if dependencies were loaded after the library': function() {
+    clearLibraryStorage();
+
+    librarySystem('workBlurb', ['name', 'company'], function(name, company) {
+      return name + ' works at ' + company;
+    });
+
+    librarySystem('name', [], function() {
+      return 'Gordon';
+    });
+
+    librarySystem('company', [], function() {
+      return 'Watch and Code';
+    });
+
+    var result = librarySystem('workBlurb');
+    eq(result, 'Gordon works at Watch and Code');
+  },
+  
+  'When returning a library, it should recursively process dependencies (dependencies that have dependencies)': function() {
+    clearLibraryStorage();
+
+    librarySystem('name', [], function() {
+      return 'Gordon';
+    });
+
+    librarySystem('company', [], function() {
+      return 'Watch and Code';
+    });
+
+    librarySystem('workBlurb', ['name', 'company'], function(name, company) {
+      return name + ' works at ' + company;
+    });
+
+    librarySystem('hip', ['workBlurb'], function(workBlurb) {
+      return workBlurb + ', hip hip';
+    });
+
+    librarySystem('hooray', ['hip'], function(hip) {
+      return hip + ' hooray!';
+    });
+
+    var result = librarySystem('hooray');
+    eq(result, 'Gordon works at Watch and Code, hip hip hooray!');
+  },
+
+  'it should throw an error if a dependency does not exist': function() {
+    clearLibraryStorage();
+
+    librarySystem('workBlurb', ['name', 'company'], function(name, company) {
+      return name + ' works at ' + company;
+    });
+
+    var isError = false;
+
+    try {
+      librarySystem('workBlurb');
+    } catch(e) {
+      isError = (e instanceof Error);
+    }
+
+    eq(isError, true);
+  },
+
+  'it should run the library callback only once': function() {
+    clearLibraryStorage();
+    
+    var callbackRunCounter = 0;
+
+    librarySystem('company', [], function() {
+      callbackRunCounter++;
+      return 'Watch and Code';
+    });
+    
+    librarySystem('company');
+    librarySystem('company');
+    librarySystem('company');
+
+    eq(callbackRunCounter, 1);
+  },
+
+});
+</script>
+
+
